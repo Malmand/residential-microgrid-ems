@@ -1,0 +1,9 @@
+window,strategy,days,realised_cost_EUR,grid_import_kWh,grid_export_kWh,extra_cost_vs_perfect_%
+04 Oct - 17 Oct,perfect,14,174.95,440.24,38.13,0.00
+04 Oct - 17 Oct,xgboost,14,178.09,448.49,43.43,1.80
+04 Oct - 17 Oct,persistence,14,194.66,493.79,95.19,11.27
+04 Oct - 17 Oct,profile7,14,192.21,485.90,71.69,9.87
+08 Nov - 21 Nov,perfect,14,228.70,572.49,10.01,0.00
+08 Nov - 21 Nov,xgboost,14,239.94,602.20,31.19,4.92
+08 Nov - 21 Nov,persistence,14,244.15,612.46,27.86,6.76
+08 Nov - 21 Nov,profile7,14,249.75,628.29,52.07,9.21

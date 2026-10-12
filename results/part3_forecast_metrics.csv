@@ -1,0 +1,7 @@
+target,model,MAE,RMSE,nMAE_%,MAE_daylight
+load,XGBoost,0.9756,1.2679,81.2291,
+load,Persistence,1.1046,1.7412,91.9697,
+load,7-day profile,0.9720,1.3104,80.9287,
+pv,XGBoost,0.0622,0.1185,76.8094,0.1541
+pv,Persistence,0.0585,0.1346,72.2770,0.1465
+pv,7-day profile,0.0601,0.1217,74.1887,0.1498
