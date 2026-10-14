@@ -1,6 +1,6 @@
-# Residential Microgrid Energy Management: MILP Control, Planning, Sizing, Forecast-Driven MPC and Grid Coupling
+# Residential Microgrid Energy Management: MILP Control, Planning, Sizing, Forecast-Driven MPC, Grid Coupling and Closed-Loop Testing
 
-Energy management for a single home with rooftop PV, a stationary battery, a bidirectional EV charger, a heat pump, a backup genset and a grid connection. The repository covers four levels of the problem, from a single home to a low-voltage feeder:
+Energy management for a single home with rooftop PV, a stationary battery, a bidirectional EV charger, a heat pump, a backup genset and a grid connection. The repository covers five levels of the problem, from a single home to a low-voltage feeder and a test bench for storage control:
 
 | Part | Question | Method | Time step / horizon |
 |---|---|---|---|
@@ -8,8 +8,9 @@ Energy management for a single home with rooftop PV, a stationary battery, a bid
 | 2. Planning and sizing | What does a year of optimal operation cost, and what system size minimises total cost? | Annual MILP (planning) and LP (sizing, CAPEX + OPEX) | 15 min, up to 1 year |
 | 3. Forecasting and MPC | How much does forecast quality cost in practice? | XGBoost day-ahead load and PV forecasts feeding a day-ahead MILP with a real-time correction layer | 15 min, rolling daily |
 | 4. Grid coupling | Is the optimised dispatch feasible on the feeder, and where should a larger PV plant connect? | Pyomo dispatch coupled iteratively with AC load flow in pandapower; short-circuit power and reinforcement check | 15 min, 2 days |
+| 5. Closed-loop testing | Does a battery site controller behave correctly across grid events? | Software-in-the-loop test bench: plant model, controller under test, scenario library, automated pass/fail report | 0.2 s, 5 to 17 min per scenario |
 
-Parts 1 and 2 are the group coursework of the DENSYS M1 module on microgrids (Université de Lorraine). Parts 3 and 4 are extensions written afterwards.
+Parts 1 and 2 are the group coursework of the DENSYS M1 module on microgrids (Université de Lorraine). Parts 3 to 5 are extensions written afterwards.
 
 All models are written in Pyomo and solved with the open-source HiGHS solver, so no commercial licence is needed.
 
@@ -40,6 +41,10 @@ python mpc.py 2021-12-01 7             # any other window
 # Part 4: optimisation coupled with load flow on a low-voltage feeder
 cd ../part4_grid_coupling
 python grid_coupling.py                # two summer days, about 90 s
+
+# Part 5: automated closed-loop tests of a battery site controller
+cd ../part5_closed_loop_testing
+python test_harness.py                 # 80 test runs, about 15 s
 
 # All results in one formatted Excel workbook
 cd ..
@@ -73,7 +78,10 @@ part3_forecast_mpc/
 part4_grid_coupling/
   grid_coupling.py dispatch optimisation coupled with pandapower load flow, siting study
   figures/
-results/           CSV outputs and microgrid_results.xlsx
+part5_closed_loop_testing/
+  test_harness.py  plant model, site controller versions, scenario library, checks and report
+  figures/
+results/           CSV outputs, part5_test_report.md and microgrid_results.xlsx
 export_excel.py    collects every CSV in results/ into one formatted workbook
 ```
 
@@ -235,6 +243,42 @@ The same loop then assesses three connection points for a 60 kWp PV plant, along
 - The feedback rule is a heuristic: it tightens limits only where violations occur and can over-curtail slightly. Voltage sensitivities or a linearised power flow inside the optimisation would give a sharper result.
 - Unity power factor; reactive-power control by the PV inverters, a cheap alternative to curtailment, is not modelled.
 - The MV grid strength (100 MVA short-circuit power) is assumed, and only two summer days are simulated.
+
+## Part 5: automated closed-loop testing of a battery site controller
+
+Part 1 runs a controller in closed loop with a plant model. Part 5 turns that idea into a test bench for a grid-connected battery storage site. It is a software-in-the-loop version of what Hardware-in-the-Loop testing automates on a real-time simulator.
+
+**Set-up (`test_harness.py`).**
+
+- **Plant model:** a battery with power limits, efficiency and SOC limits, a first-order inverter response (0.3 s) and a ramp limit; a co-located 12 MW wind farm; a 15 MW grid connection limit. Two sites are tested: 15 MW / 30 MWh and 15 MW / 15 MWh, each selling 10 MW of frequency containment reserve (FCR).
+- **Controller under test:** a site controller that delivers FCR (linear response to frequency deviations, full activation at ±200 mHz, ±10 mHz deadband), follows a trading schedule, manages SOC and respects the connection limit. Measurements reach it with a delay (0.2 s, or 1 s in one scenario).
+- **Scenario library:** frequency noise, ±200 mHz steps held for 15 minutes, a frequency ramp, a step at low SOC, a wind surge at the connection limit, a step with 1 s communication delay, and a schedule step.
+- **Checks:** FCR full activation within 30 s, full activation sustained for 15 minutes, tracking error, response direction, minimum SOC, time above the connection limit and schedule settling time. Delivered FCR is measured against the same run with the frequency held at 50 Hz, so schedule changes made by the controller are not mistaken for FCR.
+
+The plant, controller and scenarios only exchange measurements and set-points, so the Python plant could be swapped for a real-time simulator without changing the scenarios or checks.
+
+**Results** (`results/part5_test_results.csv`, `results/part5_test_report.md`, 180 checks):
+
+| Controller version | Checks passed |
+|---|---:|
+| v1 (first version) | 33 / 36 |
+| **v2 (revised after testing)** | **36 / 36** |
+| v2 with an FCR sign error | 14 / 36 |
+| v2 with FCR filtered by a 60 s time constant | 14 / 36 |
+| v2 with the connection-limit logic removed | 34 / 36 |
+
+- **The tests found two weaknesses in v1.** With high wind, the connection limit left no room for upward FCR (tracking error 9% against a 5% limit). On the 1-hour battery at low SOC, a 15-minute frequency event drained it to 4.6%. Version 2 keeps FCR headroom at the connection and restores SOC below 20%, and passes every check.
+- **Every injected fault is caught,** each by the scenarios that exercise it: the sign error and the slow response by the frequency events, the missing connection limit only by the wind-surge scenario. This is why the scenario library matters as much as the checks.
+
+![Closed-loop test results](part5_closed_loop_testing/figures/fig1_closed_loop_tests.png)
+
+*A: response to a −200 mHz frequency step on the 2-hour site. B: pass/fail per scenario and controller version; a cell passes only if every check passes on both sites.*
+
+### Limitations
+
+- The plant is an averaged model: no power-electronics switching, grid impedance or voltage dynamics, which is what PHIL and EMT-level simulation add.
+- Simplified FCR rules (linear droop, 30 s full activation, 15 minutes of full activation as the energy requirement); a real prequalification follows the TSO's detailed test protocol.
+- The tests run faster than real time in Python; on a real-time platform the same scenarios would run against the controller hardware itself.
 
 ---
 

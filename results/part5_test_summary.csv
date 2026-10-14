@@ -1,0 +1,6 @@
+controller,checks,passed,failed
+Controller v1,36,33,3
+Controller v2,36,36,0
+v2 + fault: FCR sign error,36,14,22
+v2 + fault: filtered FCR (60 s),36,14,22
+v2 + fault: connection limit ignored,36,34,2
