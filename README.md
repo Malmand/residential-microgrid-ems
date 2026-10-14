@@ -1,14 +1,15 @@
-# Residential Microgrid Energy Management: MILP Control, Planning, Sizing and XGBoost Forecast-Driven MPC
+# Residential Microgrid Energy Management: MILP Control, Planning, Sizing, Forecast-Driven MPC and Grid Coupling
 
-Energy management for a single home with rooftop PV, a stationary battery, a bidirectional EV charger, a heat pump, a backup genset and a grid connection. The repository covers three levels of the problem:
+Energy management for a single home with rooftop PV, a stationary battery, a bidirectional EV charger, a heat pump, a backup genset and a grid connection. The repository covers four levels of the problem, from a single home to a low-voltage feeder:
 
 | Part | Question | Method | Time step / horizon |
 |---|---|---|---|
 | 1. Real-time control | How should the assets be dispatched minute by minute? | Rule-based controller vs single-step MILP controller | 1.5 min, 24 h, 4 scenarios |
 | 2. Planning and sizing | What does a year of optimal operation cost, and what system size minimises total cost? | Annual MILP (planning) and LP (sizing, CAPEX + OPEX) | 15 min, up to 1 year |
 | 3. Forecasting and MPC | How much does forecast quality cost in practice? | XGBoost day-ahead load and PV forecasts feeding a day-ahead MILP with a real-time correction layer | 15 min, rolling daily |
+| 4. Grid coupling | Is the optimised dispatch feasible on the feeder, and where should a larger PV plant connect? | Pyomo dispatch coupled iteratively with AC load flow in pandapower; short-circuit power and reinforcement check | 15 min, 2 days |
 
-Parts 1 and 2 are the group coursework of the DENSYS M1 module on microgrids (Université de Lorraine). Part 3 is an extension written afterwards on top of the part 2 planning model.
+Parts 1 and 2 are the group coursework of the DENSYS M1 module on microgrids (Université de Lorraine). Parts 3 and 4 are extensions written afterwards.
 
 All models are written in Pyomo and solved with the open-source HiGHS solver, so no commercial licence is needed.
 
@@ -35,6 +36,10 @@ cd ../part3_forecast_mpc
 python forecasting.py                  # about 3 s
 python mpc.py                          # two 14-day windows, about 40 s
 python mpc.py 2021-12-01 7             # any other window
+
+# Part 4: optimisation coupled with load flow on a low-voltage feeder
+cd ../part4_grid_coupling
+python grid_coupling.py                # two summer days, about 90 s
 
 # All results in one formatted Excel workbook
 cd ..
@@ -64,6 +69,9 @@ part2_planning_sizing/
 part3_forecast_mpc/
   forecasting.py   XGBoost day-ahead forecasts and baselines
   mpc.py           forecast-driven day-ahead MPC with real-time correction
+  figures/
+part4_grid_coupling/
+  grid_coupling.py dispatch optimisation coupled with pandapower load flow, siting study
   figures/
 results/           CSV outputs and microgrid_results.xlsx
 export_excel.py    collects every CSV in results/ into one formatted workbook
@@ -186,6 +194,47 @@ Even though XGBoost's average forecast error is close to the baselines, it gives
 - End-of-window battery and EV states differ slightly between strategies, so on very short windows (one or two days) a forecast strategy can come out marginally cheaper than the perfect-forecast benchmark.
 - Heat losses, temperature set-points and EV plug-in times are treated as known in advance.
 - The real-time layer is a simple rule set around the plan, not a second optimisation.
+
+## Part 4: coupling the dispatch optimisation with a grid model
+
+Parts 1 to 3 treat the grid as a single connection point with no network behind it. In practice the low-voltage network is often the bottleneck: when many homes export PV at midday, voltage rises along the feeder. Part 4 checks the optimised schedules against a grid model and feeds the violations back into the optimisation.
+
+**Network.** The Kerber "Landnetz Freileitung 1" test feeder from pandapower: a 160 kVA transformer and 13 homes on a 270 m overhead line. Each home has 6 to 12 kWp of rooftop PV, its own load profile (scaled and time-shifted from the annual profile), and every second home has a 10 kWh / 5 kW battery. The window is two sunny days in June 2021.
+
+**Workflow (`grid_coupling.py`).**
+
+1. A Pyomo LP schedules all homes for minimum import cost minus export revenue (prices as in part 2), with per-home, per-time-step export and import limits.
+2. Each home's net grid exchange is mapped onto its bus and an AC load flow is run for every 15 minutes.
+3. Where a bus exceeds 1.05 p.u., falls below 0.95 p.u., or a line or the transformer exceeds 100% loading, the export (or import) limit of the homes causing it is set to 85% of their flow in those time steps. For an overloaded line these are the homes downstream of it.
+4. The LP is solved again, and the loop repeats until the whole schedule is network-feasible.
+
+The same loop then assesses three connection points for a 60 kWp PV plant, alongside the short-circuit power at each point and a reinforcement alternative (NAYY 4x150 cables and a 400 kVA transformer, with the unconstrained schedule).
+
+**Results** (`results/part4_siting.csv`, `results/part4_coupling_iterations.csv`):
+
+| Plant connection point | Short-circuit power (MVA) | Highest voltage before (p.u.) | Steps in violation | Iterations | PV curtailed, all units | Highest voltage if reinforced (p.u.) |
+|---|---:|---:|---:|---:|---:|---:|
+| No plant (homes only) | | 1.039 | 0 | 0 | 0% | |
+| Next to transformer | 3.7 | 1.045 | 0 | 0 | 0% | 1.021 |
+| Mid-feeder | 1.9 | 1.059 | 24 | 3 | 0.9% | 1.028 |
+| Feeder end | 1.2 | 1.073 | 40 | 4 | 10.0% | 1.035 |
+
+- The homes alone stay within limits, but the same 60 kWp plant is harmless next to the transformer and causes voltage violations in 40 of 192 quarter-hours at the feeder end, where the short-circuit power is three times lower.
+- The loop converges in three to four iterations. At the feeder end it curtails 10% of all PV energy over the two days (24% of the plant's own output), and reinforcement removes every violation without curtailment.
+- Siting the plant near the transformer avoids both curtailment and reinforcement.
+
+![Coupling: voltage at the feeder end and convergence](part4_grid_coupling/figures/fig1_coupling_voltage.png)
+
+*A: voltage at the end of the feeder with the plant connected there, before and after coupling. B: highest feeder voltage at each iteration for every case.*
+
+<img src="part4_grid_coupling/figures/fig2_siting_curtailment.png" width="420" alt="Curtailment by connection point">
+
+### Limitations
+
+- A radial low-voltage feeder, so N-1 contingency analysis does not apply. The same loop would carry over to a meshed transmission model, where outages of single lines are screened for every scenario.
+- The feedback rule is a heuristic: it tightens limits only where violations occur and can over-curtail slightly. Voltage sensitivities or a linearised power flow inside the optimisation would give a sharper result.
+- Unity power factor; reactive-power control by the PV inverters, a cheap alternative to curtailment, is not modelled.
+- The MV grid strength (100 MVA short-circuit power) is assumed, and only two summer days are simulated.
 
 ---
 

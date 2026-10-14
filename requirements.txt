@@ -6,3 +6,4 @@ scipy>=1.11
 pyomo>=6.7
 highspy>=1.7
 xgboost>=2.0
+pandapower>=3.0
