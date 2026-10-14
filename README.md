@@ -44,7 +44,7 @@ python grid_coupling.py                # two summer days, about 90 s
 
 # Part 5: automated closed-loop tests of a battery site controller
 cd ../part5_closed_loop_testing
-python test_harness.py                 # 80 test runs, about 15 s
+python test_harness.py                 # 160 simulation runs, about 20 s
 
 # All results in one formatted Excel workbook
 cd ..

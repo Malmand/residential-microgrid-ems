@@ -18,7 +18,7 @@ set-points, so the Python plant could be replaced by a real-time simulator witho
 the scenarios or checks. A first controller version (v1) is revised after the tests expose two weaknesses (v2), and
 faults injected into v2 show that the tests catch typical bugs.
 
-Usage:  python test_harness.py                     (about 20 s)
+Usage:  python test_harness.py                     (160 simulation runs, about 20 s)
 """
 import os
 import time
