@@ -75,6 +75,7 @@ class HorizonData:
 
         self.P_load = pad(load)
         self.P_pv_max = pad(pv_pu)
+        # index 0: plug state just before midnight
         self.EV_connected = pad(full.EV_connected[sl], full.EV_connected[i0 - 1] if i0 else 0)
         self.t_arr = pad(full.t_arr[sl])
         self.t_dep = pad(full.t_dep[sl])
@@ -142,6 +143,7 @@ def realise(plan, load_act, pv_act_pu, load_fc, pv_fc_pu, soc_bss0, soc_ev0, ev_
         p_ev = 0.0
         if ev_conn[k]:
             gap = plan["soc_ev"][k] - soc_ev
+            # power to close the SOC gap in one step
             need = gap / (eff_ev * delta_t) if gap > 0 else gap * eff_ev / delta_t
             ev_ch = max(0.0, min(P_nom_ev, (SOC_max_ev * C_ev - soc_ev) / (eff_ev * delta_t)))
             ev_dis = max(0.0, min(P_nom_ev, (soc_ev - SOC_min_ev * C_ev) * eff_ev / delta_t))
@@ -153,6 +155,7 @@ def realise(plan, load_act, pv_act_pu, load_fc, pv_fc_pu, soc_bss0, soc_ev0, ev_
 
         ch_max = max(0.0, min(Pmax, (SOC_max_bss * C - soc) / (eff_bss * delta_t)))
         dis_max = max(0.0, min(Pmax, (soc - SOC_min_bss * C) * eff_bss / delta_t))
+        # battery absorbs the forecast error
         p_bss = float(np.clip(plan["bss"][k] - (net_act - net_fc), -dis_max, ch_max))
         soc += delta_t * (eff_bss * max(p_bss, 0.0) - max(-p_bss, 0.0) / eff_bss)
 
@@ -183,7 +186,7 @@ def run_window(start, n_days, fc, full, index, solver):
             i0 = index.get_loc(day)
             sl = slice(i0, i0 + STEPS)
             load_act, pv_act = full.P_load[sl], full.P_pv_max[sl]
-            H = min(STEPS + LOOKAHEAD, len(index) - i0)
+            H = min(STEPS + LOOKAHEAD, len(index) - i0)  # shorter at the end of the year
             if col is None:
                 load_f, pv_f = load_act, pv_act
                 load_h = full.P_load[i0:i0 + H]

@@ -61,7 +61,7 @@ def make_features(series: pd.Series) -> pd.DataFrame:
     X = pd.DataFrame(index=idx)
 
     # Calendar features
-    qh = idx.hour * 4 + idx.minute // 15
+    qh = idx.hour * 4 + idx.minute // 15  # quarter-hour of day, 0-95
     X["qh_sin"] = np.sin(2 * np.pi * qh / STEPS_PER_DAY)
     X["qh_cos"] = np.cos(2 * np.pi * qh / STEPS_PER_DAY)
     X["dow"] = idx.dayofweek
@@ -122,7 +122,7 @@ def fit_xgb(train, val, seed=0):
         n_jobs=-1,
     )
     model.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], verbose=False)
-    best_n = model.best_iteration + 1
+    best_n = model.best_iteration + 1  # 0-based index
 
     # Refit on train + validation with the selected number of trees.
     final = xgb.XGBRegressor(**{**model.get_params(), "n_estimators": best_n,
@@ -138,7 +138,7 @@ def metrics(y_true, y_pred, mask=None):
     err = y_pred - y_true
     mae = np.mean(np.abs(err))
     rmse = np.sqrt(np.mean(err ** 2))
-    return {"MAE": mae, "RMSE": rmse, "nMAE_%": 100 * mae / np.mean(y_true)}
+    return {"MAE": mae, "RMSE": rmse, "nMAE_%": 100 * mae / np.mean(y_true)}  # nMAE vs mean of actuals
 
 
 # =============================================================================
@@ -209,7 +209,7 @@ def main():
             # Learn the PV output as a fraction of its recent clear-sky envelope,
             # which removes most of the seasonal level the model cannot extrapolate.
             env = X["same_qh_max_14d"]
-            target = (y / env.where(env > 1e-3)).fillna(0.0).clip(0, 1.5)
+            target = (y / env.where(env > 1e-3)).fillna(0.0).clip(0, 1.5)  # night: 0; cap outliers
         else:
             env, target = None, y
         train, val, test = split(X, target)

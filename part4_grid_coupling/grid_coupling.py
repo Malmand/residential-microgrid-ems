@@ -100,8 +100,9 @@ def optimise(homes, pv_pu, e_max, i_max):
             c.add(m.soc[h, t] == prev + (0.95 * m.ch[h, t] - m.dis[h, t] / 0.95) * DT)
             c.add(m.soc[h, t] >= 0.1 * cap[h])
             c.add(m.soc[h, t] <= 0.95 * cap[h])
-        c.add(m.soc[h, T[-1]] >= 0.5 * cap[h])
+        c.add(m.soc[h, T[-1]] >= 0.5 * cap[h])  # no free energy from the initial SOC
     m.obj = pyo.Objective(expr=sum((PI_IMP * m.imp[h, t] - PI_EXP * m.exp[h, t]
+                                    # tiny cost: no simultaneous charge and discharge
                                     + 1e-4 * (m.ch[h, t] + m.dis[h, t])) * DT for h in H for t in T))
     pyo.SolverFactory(SOLVER).solve(m)
     g = lambda v: np.array([[pyo.value(v[h, t]) for t in T] for h in H])
@@ -132,7 +133,7 @@ def load_flow(net, homes, net_kw):
     vm = np.zeros((len(net.bus), T)); ll = np.zeros((len(net.line), T)); tl = np.zeros(T)
     for t in range(T):
         net.load["p_mw"] = net_kw[:, t] / 1000.0
-        pp.runpp(net, init="results" if t else "auto", numba=False)
+        pp.runpp(net, init="results" if t else "auto", numba=False)  # warm start from the previous step
         vm[:, t] = net.res_bus.vm_pu.values
         ll[:, t] = net.res_line.loading_percent.values
         tl[t] = net.res_trafo.loading_percent.values[0]
@@ -165,7 +166,7 @@ def couple(homes, pv_pu, net, label):
         if not bad.any():
             break
         for t in np.where(bad)[0]:
-            exporting = exp[:, t].sum() > imp[:, t].sum()
+            exporting = exp[:, t].sum() > imp[:, t].sum()  # decides which limit to tighten
             culprits = np.zeros(H, bool)
             culprits |= np.isin(bus_of, np.where(over_v[:, t] | under_v[:, t])[0])
             for l in np.where(over_l[:, t])[0]:
@@ -173,7 +174,7 @@ def couple(homes, pv_pu, net, label):
             if over_t[t]:
                 culprits |= True
             if not culprits.any():
-                culprits |= True
+                culprits |= True  # no bus identified: tighten all
             if exporting:
                 e_max[culprits, t] = TIGHTEN * exp[culprits, t]
             else:
@@ -185,6 +186,7 @@ def couple(homes, pv_pu, net, label):
 
 def short_circuit_mva(net, buses):
     sc.calc_sc(net, case="max", ip=False)
+    # S_k = sqrt(3) U I_k''
     return {b: float(net.res_bus_sc.ikss_ka[b] * np.sqrt(3) * net.bus.vn_kv[b]) for b in buses}
 
 

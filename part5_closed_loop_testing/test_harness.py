@@ -65,12 +65,12 @@ class Plant:
     def step(self, p_set, p_wind):
         s = self.s
         p_set = float(np.clip(p_set, -s.p_nom, s.p_nom))
-        target = self.p + (p_set - self.p) * (1 - np.exp(-DT / s.tau))
+        target = self.p + (p_set - self.p) * (1 - np.exp(-DT / s.tau))  # first-order inverter response
         self.p += float(np.clip(target - self.p, -s.ramp * DT, s.ramp * DT))
         # hard plant protection at physical SOC limits
         if (self.soc <= 0.0 and self.p > 0) or (self.soc >= 1.0 and self.p < 0):
             self.p = 0.0
-        e = self.p / s.eff if self.p > 0 else self.p * s.eff
+        e = self.p / s.eff if self.p > 0 else self.p * s.eff  # MW drawn from the cells
         self.soc = float(np.clip(self.soc - e * DT / 3600 / s.e_nom, 0.0, 1.0))
         return dict(p_bess=self.p, p_poi=self.p + p_wind, soc=self.soc)
 
@@ -158,6 +158,7 @@ def ou_noise(t, sigma=0.02, theta=1 / 30, seed=1):
     rng = np.random.default_rng(seed)
     x = np.zeros(len(t))
     for i in range(1, len(t)):
+        # OU process, sd sigma
         x[i] = x[i - 1] - theta * x[i - 1] * DT + sigma * np.sqrt(2 * theta * DT) * rng.standard_normal()
     return F0 + x
 
@@ -215,7 +216,7 @@ def evaluate(site, sc, o, base):
     if "activation" in sc["checks"]:
         after = t >= 60
         full = np.abs(req[after]).max()
-        reached = np.where(np.abs(delivered[after]) >= 0.98 * full)[0]
+        reached = np.where(np.abs(delivered[after]) >= 0.98 * full)[0]  # 98 % of full activation
         same_sign = np.sign(delivered[after][reached[0]]) == np.sign(req[after][-1]) if len(reached) else False
         t_act = (t[after][reached[0]] - 60) if len(reached) and same_sign else np.inf
         add("FCR full activation time", t_act, "<= 30", t_act <= 30, "s")
@@ -232,7 +233,7 @@ def evaluate(site, sc, o, base):
     if "soc" in sc["checks"]:
         add("Lowest SOC", o["soc"].min() * 100, ">= 5", o["soc"].min() >= 0.05, "%")
     if "poi" in sc["checks"]:
-        over = np.sum(np.abs(o["p_poi"]) > site.poi_limit * 1.01) * DT
+        over = np.sum(np.abs(o["p_poi"]) > site.poi_limit * 1.01) * DT  # 1 % tolerance
         add("Time above connection limit", over, "<= 1", over <= 1, "s")
     if "setpoint" in sc["checks"]:
         target = sc["schedule"]
@@ -249,6 +250,7 @@ def main():
         for sc in SCENARIOS:
             for C in CONTROLLERS:
                 o = run(C, site, sc)
+                # same run at 50 Hz: isolates the FCR response
                 base = run(C, site, dict(sc, f=np.full(len(sc["t"]), F0)))
                 for r in evaluate(site, sc, o, base):
                     rows.append(dict(site=site.name, scenario=sc["name"], controller=C.name, **r))

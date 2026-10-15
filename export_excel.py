@@ -72,7 +72,7 @@ def _format(ws, df, first_row):
         numeric = pd.api.types.is_numeric_dtype(df[col])
         is_time = pd.api.types.is_datetime64_any_dtype(df[col])
         fmt = "yyyy-mm-dd hh:mm" if is_time else ("#,##0.00" if numeric else None)
-        if fmt and len(df) < 50_000:
+        if fmt and len(df) < 50_000:  # per-cell formatting is slow on long series
             for r in range(first_row + 1, first_row + 1 + len(df)):
                 ws.cell(row=r, column=c).number_format = fmt
         width = max(len(str(col)), *(len(str(v)) for v in df[col].head(200))) + 2

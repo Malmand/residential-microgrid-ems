@@ -536,7 +536,7 @@ def select_representative_days_optimised(res):
         daily_net_revenue[d] = daily_export_revenue[d] - daily_import_cost[d]
 
         if hasattr(res, "t_dep"):
-            daily_ev_activity[d] += 10.0 * np.sum(res.t_dep[i0:i1])
+            daily_ev_activity[d] += 10.0 * np.sum(res.t_dep[i0:i1])  # favour days with a departure
 
     def norm(x):
         xmax = np.max(x)
@@ -575,6 +575,7 @@ def select_representative_days_optimised(res):
         rule=lambda m, c: sum(m.x[d, c] for d in m.D) == 1,
     )
 
+    # each day used for one category at most
     m.no_duplicate_day = pyo.Constraint(
         m.D,
         rule=lambda m, d: sum(m.x[d, c] for c in m.C) <= 1,
@@ -906,10 +907,10 @@ class Results:
             for t in self.t
         ]
 
-        df_slice = self.df.loc[self.datetime]
+        df_slice = self.df.loc[self.datetime]  # profiles must share delta_t resolution
 
         # Load input profiles from the CSV file.
-        self.P_load = np.clip(df_slice["Load"].values, 0, None) * self.yearly_kwh
+        self.P_load = np.clip(df_slice["Load"].values, 0, None) * self.yearly_kwh  # normalised profile x annual kWh
         self.P_pv_max = np.clip(df_slice["PV"].values, 0, None)
         self.EV_connected = df_slice["EV"].values
         self.P_loss = df_slice["P_loss"].values
@@ -987,7 +988,7 @@ def save_results(res, m):
     res.SOC_bss = np.array([value(m.SOC_bss[t]) for t in m.periods])
 
     total_hours = len(list(m.periods)) * delta_t
-    scaling_factor = total_hours / (8760 * inv_hor)
+    scaling_factor = total_hours / (8760 * inv_hor)  # CAPEX share of the simulated period
 
     # CAPEX is calculated from the final selected or fixed asset sizes.
     res.capex_total = (
@@ -1012,7 +1013,7 @@ def save_results(res, m):
         for t in m.periods
     )
 
-    res.opex_year = res.opex_period * (8760 / total_hours)
+    res.opex_year = res.opex_period * (8760 / total_hours)  # linear extrapolation to a year
     res.total_cost = res.capex_scaled + res.opex_period
     res.objective = value(m.objective)
 

@@ -60,9 +60,10 @@ class Results:
 
     def state_update(self, P_ev, P_bss, P_hp, t):
         if t == 0: return KeyError
+        # kWh; losses on both directions
         self.SOC_ev[t] = self.SOC_ev[t-1] + delta_t * max(P_ev,0)*eff_ev  + delta_t * min(P_ev,0) / eff_ev
         self.SOC_bss[t] = self.SOC_bss[t-1] + delta_t * max(P_bss,0)*eff_bss + delta_t * min(P_bss,0) / eff_bss
-        self.T_hp[t] = self.T_hp[t-1] + delta_t * (P_hp*COP_hp - self.P_loss[t])/C_hp
+        self.T_hp[t] = self.T_hp[t-1] + delta_t * (P_hp*COP_hp - self.P_loss[t])/C_hp  # one-node thermal balance
 
 def run_sim(control_function, Scenario, model=None, verbose=True):      
     # Initialize arrays to store time-series results for various parameters
@@ -70,6 +71,7 @@ def run_sim(control_function, Scenario, model=None, verbose=True):
 
     for t in range(1, time_steps):
         # Compute the remaining time for EV connection at each time step
+        # h until unplug
         EV_remaining_time = compute_remaining_time(results.EV_connected[t:]) if results.EV_connected[t] else 0
 
         P_l = results.P_load[t]

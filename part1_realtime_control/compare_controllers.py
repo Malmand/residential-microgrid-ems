@@ -38,11 +38,12 @@ for sc in SCENARIOS:
         total_demand = load_energy + hp_energy
 
         true_cost    = gen_energy * FUEL_PRICE
+        # as if non-PV supply were bought from the grid
         virtual_cost = (total_demand - pv_used + gen_energy) * GRID_PRICE
 
         # EV departure SOC
         ev_conn = np.array(results.EV_connected)
-        dep_idx = np.where(np.diff(ev_conn.astype(int)) < 0)[0]
+        dep_idx = np.where(np.diff(ev_conn.astype(int)) < 0)[0]  # 1 -> 0: unplug
         soc_dep = (results.SOC_ev[dep_idx[0]+1] / C_ev * 100) if len(dep_idx) else (results.SOC_ev[-1]/C_ev*100)
 
         rows.append({

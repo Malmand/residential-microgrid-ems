@@ -132,7 +132,7 @@ def clamp(x, xmin, xmax):
 def hp_power(T_set, T_hp, P_loss):
     if T_hp >= T_set - TEMP_DEADBAND:
         return 0.0
-    p_req = ((((T_set - T_hp) * C_hp) / delta_t) + P_loss) / COP_hp
+    p_req = ((((T_set - T_hp) * C_hp) / delta_t) + P_loss) / COP_hp  # electric power to reach T_set in one step
     p_req *= HP_GAIN
     if 0.0 < (T_set - T_hp) < SMALL_ERR_BAND:
         p_req *= SMALL_ERR_GAIN
@@ -240,10 +240,10 @@ def update_model(model, total_load, P_pv_max,
 
     # ── Battery bounds ─────────────────────────────────────────────────────
     free_bss    = max(0.0, (SOC_max_bss - SOC_bss) * C_bss)
-    max_ch_bss  = min(P_nom_bss, free_bss / (eff_bss * delta_t))
+    max_ch_bss  = min(P_nom_bss, free_bss / (eff_bss * delta_t))  # power that fills the battery in one step
 
     avail_bss   = max(0.0, (SOC_bss - SOC_min_bss) * C_bss)
-    max_dis_bss = min(P_nom_bss, avail_bss * eff_bss / delta_t)
+    max_dis_bss = min(P_nom_bss, avail_bss * eff_bss / delta_t)  # power that empties it in one step
 
     model.P_ch_bss.setub(max_ch_bss)
     model.P_dis_bss.setub(max_dis_bss)
@@ -255,7 +255,7 @@ def update_model(model, total_load, P_pv_max,
         model.P_ch_ev.setub(max_ch_ev)
         model.P_ch_ev.setlb(0.0)
 
-        soc_min_v2h = max(SOC_min_ev, EV_SOC_FLOOR)
+        soc_min_v2h = max(SOC_min_ev, EV_SOC_FLOOR)  # V2H never below 50 %
         avail_ev    = max(0.0, (SOC_ev - soc_min_v2h) * C_ev)
         max_dis_ev  = min(P_nom_ev, avail_ev * eff_ev / delta_t)
         model.P_dis_ev.setub(max_dis_ev)
@@ -309,7 +309,7 @@ def control_decision(
     # ── Step 5: Reduce HP demand if load shedding is required ─
     P_shed = max(0.0, v(_model.P_shed))
     if P_shed > EPS:
-        P_hp -= min(P_hp, P_shed)
+        P_hp -= min(P_hp, P_shed)  # shed heat pump first
 
     # ── Step 5.5: Numerical power-balance correction ──────────────────────
     # The optimization model enforces power balance internally. After value
